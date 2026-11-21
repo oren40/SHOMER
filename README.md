@@ -53,11 +53,11 @@ Observe mode: flip a policy or an agent to `observe` and it records the would-be
 - `POST /v1/evaluate` · `POST /v1/complete`
 - `POST /mcp/v1/tools/{tool}/call` · `POST /mcp` (JSON-RPC `tools/call`)
 
-**Ops (scope `dashboard`)** — overview, agents (pause / kill / observe), policies (mode flip), decisions, approvals (with identity + args-hash binding), evidence.
+**Ops (scope `dashboard`)** - overview, agents (pause / kill / observe), policies (mode flip), decisions, approvals (with identity + args-hash binding), evidence.
 
-**Admin** — `POST/GET/DELETE /api/keys`, `/api/credentials` (broker registry), `/api/pricing`.
+**Admin** - `POST/GET/DELETE /api/keys`, `/api/credentials` (broker registry), `/api/pricing`.
 
-**Evidence** — `GET /api/evidence?agent_id=&from=&to=` (JSON) · `.../export?format=pdf|json`
+**Evidence** - `GET /api/evidence?agent_id=&from=&to=` (JSON) · `.../export?format=pdf|json`
 
 ## Tests
 
@@ -72,13 +72,13 @@ npm run test:all     # typecheck + smoke + tamper + MCP + bypass + concurrency +
 | bypass | direct call to the tool without the secret -> 401; wrong agent scope -> 403; a legal call goes through the broker, is metered from real usage, and the secret never reaches the caller |
 | failclosed | deleting the data dir mid-flight -> evaluate returns `deny` (ledger_append_failed) |
 
-## Evidence Pack — framing
+## Evidence Pack - framing
 
 The pack documents what an agent was allowed to do, what it actually did, what it cost, and who approved what — **as evidence for your internal controls** (internal audit / risk review).
 
 It does **not** assert regulatory conformity: SR 26-2 (April 2026) explicitly excludes generative and agentic AI, and under the EU AI Act the obligation sits with the deploying organization, not with a vendor. The pack supplies the evidence; it does not issue a certificate.
 
-## Security — known limitations, as-is
+## Security - known limitations, as-is
 
 - No mTLS yet (planned for high-assurance deployments); no rate limit on the API itself.
 - The dev key is admin-scoped and printed to the console — for production use `SHOMER_ADMIN_KEY` + narrowly scoped keys.
