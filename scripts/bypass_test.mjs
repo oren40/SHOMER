@@ -80,7 +80,7 @@ try {
   const jpost = (p, b, h) => fetch(B + p, { method: "POST", headers: { ...(h || H) }, body: b ? JSON.stringify(b) : undefined }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
 
   // register the tool (holds the secret reference), the allowlist policy and pricing
-  check("register tool", (await jpost("/api/credentials", { name: "invoice-system", kind: "http", url: `http://127.0.0.1:${MOCK_PORT}`, auth_header: "x-tool-secret", auth_env: "TOOL_SECRET", description: "mock invoice system" })).status === 200);
+  check("register tool", (await jpost("/api/credentials", { name: "invoice-system", kind: "http", url: `http://127.0.0.1:${MOCK_PORT}`, allow_private: true, allowed_hosts: ["127.0.0.1"], auth_header: "x-tool-secret", auth_env: "TOOL_SECRET", description: "mock invoice system" })).status === 200);
   await jpost("/api/agents", { id: "broker-agent", name: "Broker Test Agent", daily_budget_usd: 5 });
   const pol = (await jpost("/api/policies", { agent_id: "broker-agent", type: "tool_allowlist", config: { tools: ["invoice-system"] }, priority: 40 })).body;
   await jpost("/api/pricing", { model: "demo-model-1", input_per_mtok: 1, output_per_mtok: 2 });

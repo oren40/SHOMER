@@ -26,7 +26,7 @@ import {
   listKeys,
   revokeKey,
 } from "./auth";
-import { brokerCall } from "./broker";
+import { brokerCall, validateToolConfig, validateAndCheckTool } from "./broker";
 import {
   buildEvidence,
   simplePDF,
@@ -104,15 +104,51 @@ router.post("/mcp/v1/tools/:tool/call", async (req, res) => {
 router.post("/mcp", async (req, res) => {
   const scopes = anyKey(req);
   if (!gate(res, scopes, "authenticated")) return;
-  const method = String(req.body?.method ?? "");
-  const params = req.body?.params ?? {};
-  if (method !== "tools/call")
-    return res.status(400).json({ jsonrpc: "2.0", error: { code: -32601, message: "only tools/call is supported in v0.2" } });
-  const agent_id = params._agent_id;
-  if (!agent_id) return bad(res, 400, "params._agent_id is required");
-  if (!gate(res, scopes, "agent:" + agent_id)) return;
-  const out = await brokerCall(params.name, agent_id, params.arguments ?? {});
-  res.json({ jsonrpc: "2.0", id: req.body?.id ?? null, result: out });
+  const body = req.body ?? {};
+  const { id, method, params } = body;
+
+  // ---- MCP spec conformance over Streamable HTTP (JSON-RPC 2.0) ----
+  const mcpResult2 = (result: any) => res.json({ jsonrpc: "2.0", id: id ?? null, result });
+  const mcpError2 = (code: number, message: string) => res.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+
+  if (method === "initialize")
+    return mcpResult2({
+      protocolVersion: "2025-06-18",
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: { name: "shomer", version: "0.2.1" },
+      instructions: "Send Authorization: Bearer <agent-scoped key>. Include params._agent_id in tools/call.",
+    });
+  if (method === "notifications/initialized" || method === "initialized") return res.status(202).json({});
+  if (method === "ping") return mcpResult2({});
+
+  if (method === "tools/list") {
+    const tools = db.credentials.map((c) => ({
+      name: c.name,
+      description: c.description ?? "governed tool: " + c.name,
+      inputSchema: { type: "object", additionalProperties: true },
+    }));
+    return mcpResult2({ tools });
+  }
+
+  if (method === "tools/call") {
+    const name = params?.name;
+    const agent_id = params?._agent_id;
+    if (!name) return mcpError2(-32602, "params.name is required");
+    if (!agent_id) return mcpError2(-32602, "params._agent_id is required");
+    if (!gate(res, scopes, "agent:" + agent_id)) return;
+    const out = await brokerCall(name, agent_id, params?.arguments ?? {});
+    if (out.ok)
+      return mcpResult2({
+        content: [{ type: "text", text: JSON.stringify(out.result ?? {}) }],
+        structuredContent: out.result ?? {},
+        isError: false,
+      });
+    return mcpResult2({
+      content: [{ type: "text", text: JSON.stringify({ decision: out.decision, status: out.status, error: out.error }) }],
+      isError: true,
+    });
+  }
+  return mcpError2(-32601, "method not found: " + String(method));
 });
 
 /* ---------------- Dashboard / Ops API ---------------- */
@@ -288,10 +324,11 @@ router.get("/api/credentials", (req, res) => {
   res.json({ credentials: db.credentials });
 });
 
-router.post("/api/credentials", (req, res) => {
+router.post("/api/credentials", async (req, res) => {
   if (!gate(res, anyKey(req), "admin")) return;
   const b = req.body ?? {};
-  if (!b.name || !["http", "shell"].includes(b.kind)) return bad(res, 400, "name and kind(http|shell) are required");
+  const verr = await validateAndCheckTool(b);
+  if (verr) return bad(res, 400, verr);
   if (db.credentials.some((c) => c.name === b.name)) return bad(res, 409, "tool exists");
   db.credentials.push(b);
   saveCredentials();

@@ -11,8 +11,9 @@
     "test": "node scripts/smoke.mjs",
     "test:tamper": "node scripts/tamper_test.mjs",
     "test:bypass": "node scripts/bypass_test.mjs",
+    "test:mcp": "node scripts/mcp_test.mjs",
     "test:failclosed": "node scripts/ledger_failure_test.mjs",
-    "test:all": "npm run test && npm run test:tamper && npm run test:bypass && npm run test:failclosed"
+    "test:all": "npm run typecheck && npm run test && npm run test:tamper && npm run test:mcp && npm run test:bypass && npm run test:failclosed"
   },
   "dependencies": {
     "express": "^4.19.2"

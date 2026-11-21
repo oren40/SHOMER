@@ -294,7 +294,7 @@ export function evaluate(input: EvalInput) {
 }
 
 export function recordOutcome(body: {
-  decision_id: string;
+  decision_id?: string;
   cost_usd?: number;
   tokens?: number;
   status?: string;

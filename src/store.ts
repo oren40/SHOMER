@@ -58,6 +58,9 @@ export interface ToolCredential {
   cmd?: string; // shell: command template
   timeout_ms?: number;
   description?: string;
+  allowed_hosts?: string[];
+  allow_private?: boolean;
+  optional_auth?: boolean;
 }
 
 /** Metering catalog: model -> price per 1M tokens. The broker computes real cost from usage. */

@@ -11,6 +11,7 @@ import { ledgerEvents, verifyLedger, latestCheckpointInfo, spentToday } from "./
 
 export interface EvidenceQuery {
   agent_id?: string;
+  format?: string;
   from?: string; // ISO
   to?: string; // ISO
 }
@@ -169,7 +170,7 @@ export function evidenceToText(ev: ReturnType<typeof buildEvidence>): string[] {
     );
   chunks.push("");
   chunks.push("DECISION LEDGER (decision + outcomes)");
-  for (const d of ev.decisions) {
+  for (const d of ev.decisions as any[]) {
     chunks.push(
       `  ${d.ts.slice(0, 19)} ${d.agent_id} ${d.tool} -> ${d.decision}${d.would_deny_reason ? " (would: " + d.would_deny_reason + ")" : ""}`
     );
