@@ -229,8 +229,13 @@ export function verifyLedger() {
   tail = rows.length ? { seq: rows[rows.length - 1].seq, hash: prev } : { seq: 0, hash: GENESIS };
 
   const cps = readCheckpoints();
+  const openWindow = (cp: any) => ({
+    records_since_checkpoint: cp ? rows.length - cp.seq : rows.length,
+    seconds_since_checkpoint: cp ? Math.round((Date.now() - new Date(cp.ts).getTime()) / 1000) : null,
+    policy: { every_records: CHECKPOINT_EVERY, every_seconds: CHECKPOINT_INTERVAL_S },
+  });
   if (cps.length === 0)
-    return { valid: true, length: rows.length, checkpoint: null, public_key_fp: publicKeyFingerprint() };
+    return { valid: true, length: rows.length, checkpoint: null, public_key_fp: publicKeyFingerprint(), open_window: openWindow(null) };
 
   const cp = cps[cps.length - 1];
   if (!verifyCheckpointSignature(cp))
@@ -240,7 +245,7 @@ export function verifyLedger() {
   const anchor = rows.find((r) => r.seq === cp.seq);
   if (anchor && anchor.hash !== cp.last_hash)
     return { valid: false, length: rows.length, checkpoint: cp, why: "history_rewrite_at_checkpoint" };
-  return { valid: true, length: rows.length, checkpoint: cp, public_key_fp: publicKeyFingerprint() };
+  return { valid: true, length: rows.length, checkpoint: cp, public_key_fp: publicKeyFingerprint(), open_window: openWindow(cp) };
 }
 
 export function latestCheckpointInfo() {

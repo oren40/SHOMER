@@ -100,7 +100,7 @@ try {
     name: "invoice-system",
     kind: "http",
     url: `http://127.0.0.1:${MOCK_PORT}`,
-    allow_private: true,
+    allowed_cidrs: ["127.0.0.0/8"],
     allowed_hosts: ["127.0.0.1"],
     auth_header: "x-tool-secret",
     auth_env: "TOOL_SECRET",

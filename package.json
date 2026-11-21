@@ -15,9 +15,11 @@
     "test:concurrency": "node scripts/concurrency_test.mjs",
     "test:truncation": "node scripts/tail_truncation_test.mjs",
     "test:approval": "node scripts/approval_identity_test.mjs",
+    "test:ssrf": "node scripts/ssrf_rebind_test.mjs",
+    "pilot": "node scripts/pilot_report.mjs",
     "sbom": "node scripts/sbom.mjs",
     "test:failclosed": "node scripts/ledger_failure_test.mjs",
-    "test:all": "npm run typecheck && npm run test && npm run test:tamper && npm run test:mcp && npm run test:bypass && npm run test:concurrency && npm run test:truncation && npm run test:approval && npm run test:failclosed"
+    "test:all": "npm run typecheck && npm run test && npm run test:tamper && npm run test:mcp && npm run test:bypass && npm run test:concurrency && npm run test:truncation && npm run test:approval && npm run test:ssrf && npm run test:failclosed"
   },
   "dependencies": {
     "express": "^4.19.2"

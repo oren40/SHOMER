@@ -105,3 +105,26 @@ docker build -t shomer .     # no telemetry; outbound only to configured destina
 ```
 
 Air-gapped install: copy the folder with node_modules, run `npm run start` - details in docs/offline-install.md.
+
+
+## Trust model: checkpoints, sink, open window
+
+- The **sink** (`SHOMER_CHECKPOINT_SINK_URL`) is part of the trust model: every signed checkpoint is POSTed there (SIEM / customer WORM). Delivery is best-effort; the local signed file remains the source of truth. Delivery status is exposed at `GET /api/checkpoints` (`export`).
+- An external verifier needs only the **public key** (from `GET /api/checkpoints`) + the sink payloads: it can confirm every `(seq, last_hash, ts)` triple without trusting the operator, and detect rollback/rewrite.
+- The **open window** is explicit: verify responses and `/api/checkpoints` report `records_since_checkpoint` and `seconds_since_checkpoint` against the policy (`SHOMER_CHECKPOINT_EVERY=25`, `SHOMER_CHECKPOINT_INTERVAL_S=300`). Up to that many trailing records can be removed without detection - sized by policy, never silent.
+
+## Broker destination policy (per tool)
+
+- `allowed_hosts`: hostname allowlist (optional).
+- `allowed_cidrs`: CIDR allowlist (optional). If set, ONLY those ranges are permitted; otherwise the default is **public-only** (private/loopback/link-local/CGNAT/benchmark/multicast refused).
+- Connections are **pinned to a validated IP** (Host header + TLS SNI keep the hostname), redirects are not followed, and IPv4-mapped IPv6 and legacy numeric encodings (`0x7f..`, `2130706433`, octal) are normalized before validation. DNS rebinding is covered by `npm run test:ssrf`.
+
+## Observe-only pilot (14-day protocol)
+
+See `docs/observe-pilot.md`: deploy, put one agent in `observe` mode, and after 14 days run:
+
+```bash
+npm run pilot -- --agent <agent_id> --days 14   # -> pilot-out/: cost report + evidence pack (JSON+PDF)
+```
+
+The pack is "evidence for your internal controls": what was allowed, what happened, what it cost, who approved what - verifiable by your own reviewer.
