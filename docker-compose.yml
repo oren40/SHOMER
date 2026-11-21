@@ -1,0 +1,9 @@
+services:
+  shomer:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: sh -c "npm install --no-audit --no-fund && npm run start"
+    ports:
+      - "8787:8787"

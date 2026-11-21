@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shomer - Agent Control Plane</title>
+<style>
+  :root {
+    --bg: #0b0f14; --card: #121821; --line: #1e2733; --txt: #dbe4ee; --dim: #7b8ba1;
+    --accent: #4f8cff; --ok: #22c55e; --bad: #ef4444; --warn: #f59e0b; --info: #38bdf8;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--txt); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  .logo { font-weight: 800; letter-spacing: 3px; font-size: 18px; }
+  .logo span { color: var(--accent); }
+  .sub { color: var(--dim); font-size: 12px; }
+  .spacer { flex: 1; }
+  button { cursor: pointer; border: 1px solid var(--line); background: #182131; color: var(--txt); padding: 7px 12px; border-radius: 8px; font-size: 12.5px; }
+  button:hover { border-color: var(--accent); }
+  button.danger { border-color: #5b2020; color: #ff8f8f; }
+  button.danger:hover { border-color: var(--bad); }
+  button.good { border-color: #1d4227; color: #7ee2a0; }
+  main { padding: 18px 22px; max-width: 1280px; margin: 0 auto; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .kpi .v { font-size: 24px; font-weight: 700; margin-top: 2px; }
+  .kpi .l { color: var(--dim); font-size: 11.5px; text-transform: uppercase; letter-spacing: 1px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .panel h3 { font-size: 12.5px; color: var(--dim); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--dim); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 6px 8px; border-bottom: 1px solid #151d27; vertical-align: top; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .4px; }
+  .b-allow { background: #0f2b1a; color: var(--ok); }
+  .b-deny { background: #331414; color: #ff9c9c; }
+  .b-require_human { background: #33260e; color: #ffd27e; }
+  .b-sanitize { background: #0e2733; color: var(--info); }
+  .bar { height: 6px; background: #1a2432; border-radius: 4px; overflow: hidden; min-width: 90px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .muted { color: var(--dim); }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+  .status-active { color: var(--ok); } .status-paused { color: var(--warn); } .status-killed { color: var(--bad); }
+  .flash { padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; display: none; font-size: 12.5px; }
+  .flash.on { display: block; }
+  .flash.err { background: #331414; color: #ff9c9c; }
+  .flash.ok { background: #0f2b1a; color: var(--ok); }
+  #chainOk { color: var(--ok); } #chainBad { color: var(--bad); display: none; }
+  .b-observe_blocked { background: #241b3a; color: #c4b5fd; }
+  .overlay { position: fixed; inset: 0; background: rgba(4,7,11,.94); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .overlay .box { background: var(--card); border: 1px solid var(--line); padding: 26px 30px; border-radius: 14px; width: 400px; }
+  .overlay input { width: 100%; background: #0b0f14; border: 1px solid var(--line); color: var(--txt); padding: 10px; border-radius: 8px; margin: 10px 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">SH<span>O</span>MER</div>
+  <div class="sub">Runtime control plane for enterprise AI agents</div>
+  <div class="spacer"></div>
+  <button id="killBtn" class="danger" onclick="toggleKill()">GLOBAL KILL: OFF</button>
+  <button onclick="verifyChain()">Verify evidence chain</button>
+</header>
+<main>
+  <div id="flash" class="flash"></div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="cols">
+    <div>
+      <div class="panel">
+        <h3>Agents under governance</h3>
+        <table id="agentsTbl">
+          <thead><tr><th>Agent</th><th>Status</th><th>Mode</th><th>Budget (today)</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h3>Human approvals pending</h3>
+        <table id="apprTbl">
+          <thead><tr><th>Agent / Tool</th><th>Payload</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="apprEmpty" class="muted" style="padding:6px 8px">Nothing waiting. Agents are running within policy.</div>
+      </div>
+      <div class="panel">
+        <h3>Policies in force</h3>
+        <table id="polTbl">
+          <thead><tr><th>Scope</th><th>Type</th><th>Config</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h3>Live decision feed</h3>
+        <table id="decTbl">
+          <thead><tr><th>Time</th><th>Agent</th><th>Tool</th><th>Decision</th><th>Reason</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="login" class="overlay" style="display:none">
+  <div class="box">
+    <div class="logo" style="margin-bottom:6px">SH<span>O</span>MER</div>
+    <div class="sub" style="margin-bottom:10px">Enter your API key (dev key lives in <span class="mono">shomer/data/DEV_KEY.txt</span>)</div>
+    <input id="keyInput" placeholder="sk_live_..." onkeydown="if(event.key==='Enter')login()" />
+    <button style="width:100%" onclick="login()">Connect</button>
+    <div id="loginErr" class="muted" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (n) => "$" + (Math.round(n * 10000) / 10000);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+let KEY = localStorage.getItem("shomer_key") || "";
+const authH = () => (KEY ? { Authorization: "Bearer " + KEY } : {});
+
+function requireLogin() {
+  $("#login").style.display = "flex";
+  $("#keyInput").value = KEY || "";
+}
+async function login() {
+  const k = $("#keyInput").value.trim();
+  const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: k }) });
+  if (!r.ok) {
+    $("#loginErr").textContent = "invalid key";
+    return;
+  }
+  KEY = k;
+  localStorage.setItem("shomer_key", k);
+  $("#login").style.display = "none";
+  load();
+}
+
+function flash(msg, ok = true) {
+  const f = $("#flash");
+  f.textContent = msg;
+  f.className = "flash on " + (ok ? "ok" : "err");
+  setTimeout(() => (f.className = "flash"), 4000);
+}
+
+async function api(path, opts) {
+  opts = opts || {};
+  opts.headers = { ...authH(), ...(opts.headers || {}) };
+  const r = await fetch(path, opts);
+  if (r.status === 401) {
+    requireLogin();
+    throw new Error("authentication required");
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+
+async function toggleKill() {
+  const o = await api("/api/overview");
+  const next = !o.global_kill;
+  await api("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ global_kill: next }) });
+  flash(next ? "GLOBAL KILL ENABLED - all agents are being denied" : "Global kill disabled - agents may run again", !next);
+  load();
+}
+
+async function verifyChain() {
+  const v = await api("/v1/ledger/verify");
+  flash(v.valid ? `Evidence chain valid: ${v.length} records, hashes intact` : `CHAIN BROKEN at seq ${v.first_invalid_seq} (${v.why})`, v.valid);
+}
+
+async function setAgent(id, status) {
+  await api("/api/agents/" + id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+  load();
+}
+
+async function resolve(id, approved) {
+  await api("/api/approvals/" + id + "/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved, by: "dashboard" }) });
+  flash(approved ? "Approved - agent unblocked" : "Denied - agent was told to stop");
+  load();
+}
+
+function render(o, agents, decisions, approvals, policies) {
+  $("#kpis").innerHTML = [
+    ["Spend today", fmt(o.spend_today_usd)],
+    ["Actions governed", o.actions_today],
+    ["Blocked", o.blocked_today],
+    ["Human reviews", o.human_reviews_today],
+    ["Pending approvals", o.pending_approvals],
+    ["Agents", o.agents],
+  ].map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div></div>`).join("");
+
+  const killBtn = $("#killBtn");
+  killBtn.textContent = "GLOBAL KILL: " + (o.global_kill ? "ON" : "OFF");
+  killBtn.style.borderColor = o.global_kill ? "var(--bad)" : "";
+  killBtn.style.color = o.global_kill ? "#ff8f8f" : "";
+
+  $("#agentsTbl tbody").innerHTML = agents.map((a) => {
+    const pct = Math.min(100, (a.spent_today_usd / (a.daily_budget_usd || 1)) * 100);
+    return `<tr>
+      <td><b>${esc(a.id)}</b><div class="muted">${esc(a.name)} · ${esc(a.owner)}</div></td>
+      <td><span class="status-${a.status}">${a.status}</span></td>
+      <td>${a.enforcement === "observe" ? '<span class="badge b-observe_blocked">observe</span>' : "enforce"}</td>
+      <td>${fmt(a.spent_today_usd)} / ${fmt(a.daily_budget_usd)}
+        <div class="bar"><i style="width:${pct}%;${pct > 90 ? "background:var(--bad)" : ""}"></i></div></td>
+      <td style="white-space:nowrap">
+        ${a.status === "active" ? `<button onclick="setAgent('${esc(a.id)}','paused')">Pause</button>
+        <button class="danger" onclick="setAgent('${esc(a.id)}','killed')">Kill</button>`
+      : `<button class="good" onclick="setAgent('${esc(a.id)}','active')">Activate</button>`}
+      </td></tr>`;
+  }).join("");
+
+  const pending = approvals.filter((a) => a.status === "pending");
+  $("#apprEmpty").style.display = pending.length ? "none" : "block";
+  $("#apprTbl tbody").innerHTML = pending.map((a) => `<tr>
+    <td><b>${esc(a.agent_id)}</b><div class="mono muted">${esc(a.tool)}</div></td>
+    <td class="mono">${esc(JSON.stringify(a.args))}<div class="muted">${esc(a.reason)} · sha256:${esc((a.args_hash || "").slice(0, 12))}</div></td>
+    <td style="white-space:nowrap">
+      <button class="good" onclick="resolve('${esc(a.id)}',true)">Approve</button>
+      <button class="danger" onclick="resolve('${esc(a.id)}',false)">Deny</button>
+    </td></tr>`).join("");
+
+  $("#decTbl tbody").innerHTML = decisions.map((d) => `<tr>
+    <td class="mono muted">${esc(d.ts.slice(11, 19))}</td>
+    <td class="mono">${esc(d.agent_id)}</td>
+    <td class="mono">${esc(d.tool)}</td>
+    <td><span class="badge b-${esc(d.decision)}">${esc(d.decision)}</span>${d.would_deny_reason ? `<div class="muted">would: ${esc(d.would_deny_reason)}</div>` : ""}</td>
+    <td class="muted">${esc(d.reason)}</td></tr>`).join("");
+
+  $("#polTbl tbody").innerHTML = policies.map((p) => `<tr>
+    <td class="mono">${p.agent_id ? esc(p.agent_id) : "ALL"}</td>
+    <td>${esc(p.type)}${p.enabled ? "" : ' <span class="muted">(off)</span>'}</td>
+    <td class="mono muted">${esc(JSON.stringify(p.config))}</td></tr>`).join("");
+}
+
+async function load() {
+  try {
+    const [o, a, d, ap, p] = await Promise.all([
+      api("/api/overview"), api("/api/agents"), api("/api/decisions?limit=25"),
+      api("/api/approvals"), api("/api/policies"),
+    ]);
+    render(o, a.agents, d.decisions, ap.approvals, p.policies);
+  } catch (e) {
+    flash("Control plane unreachable: " + e.message, false);
+  }
+}
+
+if (!KEY) {
+  requireLogin();
+  $("#keyInput").focus();
+} else {
+  load();
+}
+setInterval(load, 3000);
+</script>
+</body>
+</html>
