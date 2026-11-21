@@ -112,7 +112,10 @@ try {
   await jpost("/api/pricing", { model: "mcp-demo-model", input_per_mtok: 1, output_per_mtok: 2 });
 
   // ---- MCP spec conformance over Streamable HTTP ----
-  const mcp = new McpClient(B + "/mcp", KEY);
+  // MCP clients must use an agent-scoped key: identity is derived from the key scope
+  const agentKey = (await jpost("/api/keys", { name: "mcp-agent-key", scopes: ["agent:mcp-agent"] })).body;
+  const wildKey = (await jpost("/api/keys", { name: "wild-key", scopes: ["agent:*"] })).body;
+  const mcp = new McpClient(B + "/mcp", agentKey.key);
   const init = await mcp.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "shomer-test-client", version: "0.1" } });
   check("initialize: protocol negotiated", init.body?.result?.protocolVersion === "2025-06-18" && init.body?.result?.capabilities?.tools !== undefined, JSON.stringify(init.body?.result?.serverInfo));
 
@@ -126,13 +129,22 @@ try {
   const names = (list.body?.result?.tools ?? []).map((t) => t.name);
   check("tools/list: governed tools exposed", names.includes("invoice-system"), names.join(","));
 
-  const call = await mcp.rpc("tools/call", { name: "invoice-system", _agent_id: "mcp-agent", arguments: { order_id: "M-1", amount: 42 } });
+  const call = await mcp.rpc("tools/call", { name: "invoice-system", arguments: { order_id: "M-1", amount: 42 } });
   const text = call.body?.result?.content?.[0]?.text ?? "";
   check("tools/call: legal call succeeds", call.body?.result?.isError === false && text.includes("paid-777"), call.body?.result?.isError);
   check("tools/call: result metered by broker", call.body?.result?.structuredContent?.receipt === "paid-777");
 
-  const badAgent = await mcp.rpc("tools/call", { name: "invoice-system", _agent_id: "refunds-prod", arguments: { x: 1 } });
-  check("tools/call: non-allowlisted agent -> isError with decision", badAgent.body?.result?.isError === true && badAgent.body?.result?.content?.[0]?.text?.includes("tool_not_allowed"));
+  // identity now comes from the key scope: _agent_id is deprecated
+  const mism = await mcp.rpc("tools/call", { name: "invoice-system", _agent_id: "refunds-prod", arguments: { x: 1 } });
+  check("tools/call: deprecated _agent_id mismatch -> -32602", mism.body?.error?.code === -32602, mism.body?.error?.message);
+  const nonAllow = await mcp.rpc("tools/call", { name: "invoice-system", arguments: {} });
+  // mcp-agent IS allowlisted for invoice-system -> this one succeeds from a bad-args path; use a different key instead
+  const mcpWild = new McpClient(B + "/mcp", wildKey.key);
+  const wildCall = await mcpWild.rpc("tools/call", { name: "invoice-system", arguments: {} });
+  check("tools/call: agent:* wildcard key cannot derive identity -> -32602", wildCall.body?.error?.code === -32602, wildCall.body?.error?.message);
+  const mcpRestricted = new McpClient(B + "/mcp", (await jpost("/api/keys", { name: "other-agent-key", scopes: ["agent:refunds-prod"] })).body.key);
+  const blocked = await mcpRestricted.rpc("tools/call", { name: "invoice-system", arguments: {} });
+  check("tools/call: agent without the tool on its allowlist -> isError with decision", blocked.body?.result?.isError === true && blocked.body?.result?.content?.[0]?.text?.includes("tool_not_allowed"));
 
   const notFound = await mcp.rpc("resources/list", {});
   check("unknown method -> JSON-RPC -32601", notFound.body?.error?.code === -32601, notFound.body?.error?.message);

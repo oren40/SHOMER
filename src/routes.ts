@@ -29,6 +29,7 @@ import {
   createKey,
   listKeys,
   findKeyByPlaintext,
+  agentIdFromScopes,
   revokeKey,
 } from "./auth";
 import { brokerCall, validateToolConfig, validateAndCheckTool } from "./broker";
@@ -137,9 +138,16 @@ router.post("/mcp", async (req, res) => {
 
   if (method === "tools/call") {
     const name = params?.name;
-    const agent_id = params?._agent_id;
+    // agent identity comes FROM THE KEY scope (agent:<id>) - params._agent_id is deprecated
+    const agent_id = agentIdFromScopes(scopes);
     if (!name) return mcpError2(-32602, "params.name is required");
-    if (!agent_id) return mcpError2(-32602, "params._agent_id is required");
+    if (!agent_id)
+      return mcpError2(
+        -32602,
+        "agent identity must come from the key: scope the key to exactly one agent (agent:<id>); params._agent_id is deprecated"
+      );
+    if (params?._agent_id && params._agent_id !== agent_id)
+      return mcpError2(-32602, "params._agent_id conflicts with the key's agent scope");
     if (!gate(res, scopes, "agent:" + agent_id)) return;
     const out = await brokerCall(name, agent_id, params?.arguments ?? {});
     if (out.ok)

@@ -74,6 +74,11 @@ try {
   check("evaluate: allow", r.decision === "allow", r.reason);
   await post("/v1/complete", { decision_id: r.decision_id, cost_usd: 0.02, tokens: 100, status: "succeeded", cost_source: "agent_reported" });
 
+  // 1b) optional model/prompt provenance fields land in the ledger
+  r = await evaluateAndAssertLedger({ agent_id: "refunds-prod", tool: "lookup_order", args: { order_id: "O-9" }, estimated_cost_usd: 0.02, model_id: "claude-sonnet-4", model_version: "20260501", prompt_hash: "e3b0c44298fc1c14" });
+  const prov = (await get("/v1/ledger?limit=12")).events.find((e) => e.decision_id === r.decision_id);
+  check("ledger: model/version/prompt_hash captured", prov?.model_id === "claude-sonnet-4" && prov?.model_version === "20260501" && prov?.prompt_hash === "e3b0c44298fc1c14", JSON.stringify(prov).slice(0, 120));
+
   // 2) PII -> sanitize
   r = await evaluateAndAssertLedger({ agent_id: "refunds-prod", tool: "notify_customer", args: { email: "bob@example.com", order_id: "O-2" }, estimated_cost_usd: 0.03 });
   check("evaluate: sanitize PII", r.decision === "sanitize" && r.redactions >= 1, JSON.stringify(r.args));

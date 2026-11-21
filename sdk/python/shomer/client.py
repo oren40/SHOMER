@@ -94,10 +94,17 @@ class Shomer:
     def call(self, tool, args=None):
         """Execute a tool via the control plane broker (never bypasses policy,
         cost is metered server-side from real usage)."""
-        return self._req(
-            "/mcp/v1/tools/%s/call" % tool,
-            {"agent_id": self.agent_id, "args": args or {}},
+        # MCP JSON-RPC endpoint; agent identity is derived from this key's scope (agent:<id>)
+        r = self._req(
+            "/mcp",
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args or {}}},
         )
+        out = (r or {}).get("result") or {}
+        return {
+            "ok": not out.get("isError"),
+            "content": out.get("content"),
+            "structured": out.get("structuredContent"),
+        }
 
     # ---- one-call guard ----
     def execute(self, tool, args=None, estimated_cost_usd=None,

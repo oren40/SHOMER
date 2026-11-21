@@ -16,6 +16,9 @@ export interface EvalInput {
   args?: any;
   estimated_cost_usd?: number;
   context?: any;
+  model_id?: string;
+  model_version?: string;
+  prompt_hash?: string;
 }
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -89,6 +92,11 @@ export async function evaluate(input: EvalInput) {
    * the verdict is returned. If the append fails we fail CLOSED (deny).
    * Appends are serialized so that holds under concurrent load.
    */
+  const modelMeta: Record<string, any> = {};
+  if (input.model_id) modelMeta.model_id = String(input.model_id).slice(0, 120);
+  if (input.model_version) modelMeta.model_version = String(input.model_version).slice(0, 120);
+  if (input.prompt_hash) modelMeta.prompt_hash = String(input.prompt_hash).slice(0, 120);
+
   const logAndReturn = async (payload: Record<string, any>, verdict: Record<string, any>) => {
     const decision_id = crypto.randomUUID();
     const rec: Record<string, any> = {
@@ -99,6 +107,7 @@ export async function evaluate(input: EvalInput) {
       args_hash: argsHash,
       args_preview: safePreview(args),
       policy_id: payload.policy_id ?? null,
+      ...modelMeta,
       ...payload,
     };
     try {
@@ -255,6 +264,7 @@ export async function evaluate(input: EvalInput) {
         decision: "require_human",
         reason: proposal.reason,
         policy_id: proposal.policy?.id ?? null,
+        ...modelMeta,
         args_hash: argsHash,
         args_preview: safePreview(args),
       });

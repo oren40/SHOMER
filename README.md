@@ -101,7 +101,7 @@ Deferred: Next.js dashboard, Postgres (when a design partner needs it), OpenTele
 
 ```bash
 npm run sbom                 # CycloneDX-lite -> shomer-sbom.json
-docker build -t shomer .     # runtime makes NO outbound calls (see .dockerignore, Dockerfile)
+docker build -t shomer .     # no telemetry; outbound only to configured destinations (broker tools, checkpoint sink)
 ```
 
 Air-gapped install: copy the folder with node_modules, run `npm run start` - details in docs/offline-install.md.

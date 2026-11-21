@@ -1,7 +1,6 @@
 # Shomer - runtime control plane for enterprise AI agents
-# Build-time dependencies come from the npm registry; RUNTIME makes no outbound
-# calls (no telemetry, no phone-home): the only egress is what YOU configure
-# (broker tool destinations and the optional checkpoint sink).
+# Build-time deps come from the npm registry; RUNTIME has no telemetry. The only
+# egress is what YOU configure (broker tool destinations, optional checkpoint sink).
 
 FROM node:20-alpine
 

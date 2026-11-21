@@ -70,6 +70,13 @@ export function scopesFor(plaintext: string | null): string[] | null {
   return k.scopes;
 }
 
+/** The agent a key acts as. Only an explicit agent:<id> scope qualifies (agent:* is too broad for identity). */
+export function agentIdFromScopes(scopes: string[] | null): string | null {
+  if (!scopes) return null;
+  const ids = scopes.filter((s) => s.startsWith("agent:") && !s.endsWith(":*")).map((s) => s.slice(6));
+  return ids.length === 1 ? ids[0] : null;
+}
+
 export function hasScope(scopes: string[] | null, need: string): boolean {
   if (!scopes) return false;
   if (scopes.includes("admin")) return true;
