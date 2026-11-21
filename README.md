@@ -1,4 +1,4 @@
-# Shomer — the runtime control plane for enterprise AI agents
+# Shomer - the runtime control plane for enterprise AI agents
 
 Runtime control layer for enterprise AI agents. Every agent action passes an enforcement point that decides:
 
