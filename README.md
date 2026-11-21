@@ -4,7 +4,7 @@ Runtime control layer for enterprise AI agents. Every agent action passes an enf
 
 **ALLOW** · **DENY** · **REQUIRE_HUMAN** · **SANITIZE** · **OBSERVE** — with real-time dollar budgets, cost attribution, and a tamper-evident evidence ledger (hash chain + signed checkpoints).
 
-v0.2 adds: API-key auth, an un-bypassable credential broker, server-side cost metering, observe mode, and the Evidence Pack.
+v0.2 adds: API-key auth, an un-bypassable credential broker, server-side cost metering, observe mode, and the Evidence Pack. v0.2.2 adds: Ed25519-signed checkpoints with external export, MCP conformance (Streamable HTTP), SSRF-hardened broker, authenticated approver identity, serialized appends (concurrency-safe), offline packaging.
 
 ## Quickstart
 
@@ -62,7 +62,7 @@ Observe mode: flip a policy or an agent to `observe` and it records the would-be
 ## Tests
 
 ```bash
-npm run test:all     # smoke + tamper + bypass + fail-closed
+npm run test:all     # typecheck + smoke + tamper + MCP + bypass + concurrency + truncation + approval + fail-closed
 ```
 
 | Test | What it proves |
@@ -89,3 +89,19 @@ It does **not** assert regulatory conformity: SR 26-2 (April 2026) explicitly ex
 ## Roadmap
 
 Deferred: Next.js dashboard, Postgres (when a design partner needs it), OpenTelemetry + LangChain callbacks, multi-tenancy, a fully MCP-native proxy (currently a shim), model routing / tiering (the basis for outcome-based pricing).
+
+## Trust model (v0.2.2)
+
+- **Appends are serialized.** Every /v1/evaluate is queued, so log-before-act and chain integrity hold under concurrent load (200 parallel calls tested: valid chain, exactly 200 entries, unique contiguous seqs).
+- **Checkpoints are Ed25519-signed**, written outside the data dir, every 25 records or 300s (env-tunable), and exported to an optional external sink (`SHOMER_CHECKPOINT_SINK_URL`; delivery status at `GET /api/checkpoints`). The **public key is exportable**, so a reviewer verifies checkpoints without trusting the operator. Deleting tail records is detected when any checkpoint exists beyond them (`ledger_behind_checkpoint`).
+- **Approvals are bound to an authenticated principal** (a per-human dashboard key) and to the args hash of the exact decision. A typed name is kept as a note, never as evidence.
+- **MCP conformance:** `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call` over Streamable HTTP (JSON-RPC 2.0). Connect any MCP client to `POST http://<host>:8787/mcp` with `Authorization: Bearer <agent-scoped key>` and `params._agent_id` in tools/call - zero code changes.
+
+## Packaging (offline-ready)
+
+```bash
+npm run sbom                 # CycloneDX-lite -> shomer-sbom.json
+docker build -t shomer .     # runtime makes NO outbound calls (see .dockerignore, Dockerfile)
+```
+
+Air-gapped install: copy the folder with node_modules, run `npm run start` - details in docs/offline-install.md.

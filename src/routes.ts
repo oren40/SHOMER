@@ -17,6 +17,10 @@ import {
   ledgerEvents,
   spentToday,
   appendEvent,
+  latestCheckpointInfo,
+  publicKeyPem,
+  publicKeyFingerprint,
+  lastExportStatus,
 } from "./ledger";
 import {
   keyFromRequest,
@@ -24,6 +28,7 @@ import {
   hasScope,
   createKey,
   listKeys,
+  findKeyByPlaintext,
   revokeKey,
 } from "./auth";
 import { brokerCall, validateToolConfig, validateAndCheckTool } from "./broker";
@@ -57,21 +62,21 @@ function gate(res: any, scopes: string[] | null, need: string): boolean {
 
 /* ---------------- Agent-facing API (scope: agent:<id>) ---------------- */
 
-router.post("/v1/evaluate", (req, res) => {
+router.post("/v1/evaluate", async (req, res) => {
   const scopes = anyKey(req);
   if (!gate(res, scopes, "authenticated")) return;
   const b = req.body as EvalInput;
   if (!b?.agent_id || !b?.tool) return bad(res, 400, "agent_id and tool are required");
   if (!gate(res, scopes, "agent:" + b.agent_id)) return;
-  res.json(evaluate(b));
+  res.json(await evaluate(b));
 });
 
-router.post("/v1/complete", (req, res) => {
+router.post("/v1/complete", async (req, res) => {
   const scopes = anyKey(req);
   if (!gate(res, scopes, "authenticated")) return;
   const b = req.body;
   if (!b?.decision_id) return bad(res, 400, "decision_id is required");
-  res.json(recordOutcome(b));
+  res.json(await recordOutcome(b));
 });
 
 router.get("/v1/ledger", (req, res) => {
@@ -286,22 +291,34 @@ router.get("/api/approvals/:id", (req, res) => {
   res.json(a);
 });
 
-router.post("/api/approvals/:id/resolve", (req, res) => {
+router.post("/api/approvals/:id/resolve", async (req, res) => {
   if (!gate(res, anyKey(req), "dashboard")) return;
   const a = db.approvals.find((x) => x.id === req.params.id);
   if (!a) return bad(res, 404, "approval not found");
   if (a.status !== "pending") return bad(res, 409, "already resolved");
+  // The approver must be an AUTHENTICATED principal (a per-human key), not a typed name.
+  const approverKey = String(req.body?.approver_key ?? "").trim();
+  let principalKey: any = null;
+  if (approverKey) {
+    const ks = scopesFor(approverKey);
+    if (!ks || !hasScope(ks, "dashboard")) return bad(res, 401, "invalid approver key");
+    principalKey = findKeyByPlaintext(approverKey);
+  } else {
+    const caller = keyFromRequest(req);
+    if (caller) principalKey = findKeyByPlaintext(caller);
+  }
+  if (!principalKey) return bad(res, 400, "approver identity required: pass approver_key (per-human dashboard key)");
   const by = String(req.body?.by ?? "").trim();
-  if (!by) return bad(res, 400, "approver identity (by) is required");
   const approved = !!req.body?.approved;
   a.status = approved ? "approved" : "denied";
   a.resolved_at = new Date().toISOString();
-  a.resolved_by = by;
+  a.resolved_by = principalKey.name;
+  a.resolved_by_key_id = principalKey.id;
   saveApprovals();
   // bind the approval to the exact args hash of the require_human decision
   const requ = ledgerEvents((e) => e.type === "decision" && e.decision_id === a.decision_id).pop();
   const binding_verified = !!requ && requ.args_hash === a.args_hash;
-  appendEvent({
+  await appendEvent({
     type: "outcome",
     decision_id: a.decision_id,
     agent_id: a.agent_id,
@@ -309,7 +326,9 @@ router.post("/api/approvals/:id/resolve", (req, res) => {
     status: approved ? "approved" : "denied_human",
     cost_usd: 0,
     tokens: 0,
-    actor: by,
+    actor: principalKey.name,
+    actor_key_id: principalKey.id,
+    note: by ? "note: " + by : undefined,
     args_hash: a.args_hash,
     binding_verified,
     result_preview: (approved ? "human approved" : "human denied") + (binding_verified ? "" : " (BINDING MISMATCH)"),
@@ -403,6 +422,19 @@ router.get("/api/evidence/export", (req, res) => {
   res.send(JSON.stringify(ev, null, 2));
 });
 
+/* ---------------- trust / checkpoints (dashboard) ---------------- */
+
+router.get("/api/checkpoints", (_req, res) => {
+  if (!gate(res, anyKey(_req), "dashboard")) return;
+  res.json({
+    latest: latestCheckpointInfo(),
+    public_key_pem: publicKeyPem(),
+    public_key_fingerprint: publicKeyFingerprint(),
+    export: lastExportStatus(),
+  });
+});
+
+router.get("/healthz", (_req, res) => res.json({ ok: true, service: "shomer", ts: new Date().toISOString() }));
 /* ---------------- settings ---------------- */
 
 router.patch("/api/settings", (req, res) => {

@@ -1,0 +1,11 @@
+node_modules
+data
+shomer-checkpoints
+shomer-keys
+shomer-sbom.json
+.git
+.gitignore
+.env
+*.log
+__pycache__
+demo_run.txt

@@ -78,7 +78,7 @@ interface Proposal {
   policy: Policy | null;
 }
 
-export function evaluate(input: EvalInput) {
+export async function evaluate(input: EvalInput) {
   const agent = db.agents.find((a) => a.id === input.agent_id);
   let args = input.args ?? {};
   let argsHash = sha256(canonical({ tool: input.tool, args }));
@@ -87,8 +87,9 @@ export function evaluate(input: EvalInput) {
   /**
    * Log-before-act: the decision is written to the tamper-evident ledger BEFORE
    * the verdict is returned. If the append fails we fail CLOSED (deny).
+   * Appends are serialized so that holds under concurrent load.
    */
-  const logAndReturn = (payload: Record<string, any>, verdict: Record<string, any>) => {
+  const logAndReturn = async (payload: Record<string, any>, verdict: Record<string, any>) => {
     const decision_id = crypto.randomUUID();
     const rec: Record<string, any> = {
       type: "decision",
@@ -101,14 +102,9 @@ export function evaluate(input: EvalInput) {
       ...payload,
     };
     try {
-      appendEvent(rec);
+      await appendEvent(rec);
     } catch {
-      return {
-        decision: "deny",
-        allowed: false,
-        reason: "ledger_append_failed",
-        policy_id: null,
-      };
+      return { decision: "deny", allowed: false, reason: "ledger_append_failed", policy_id: null };
     }
     return { decision_id, ...verdict };
   };
@@ -148,7 +144,7 @@ export function evaluate(input: EvalInput) {
       budget_remaining_usd: remainingBudget(agent),
     });
 
-  /* ---------- policy pass: first blocking proposal wins, like before ---------- */
+  /* ---------- policy pass: first blocking proposal wins ---------- */
   const policies: Policy[] = db.policies
     .filter((p) => p.enabled && (p.agent_id === null || p.agent_id === agent.id))
     .sort((a, b) => a.priority - b.priority);
@@ -178,24 +174,21 @@ export function evaluate(input: EvalInput) {
     }
     if (proposal) break; // first blocking proposal (by priority) wins
 
-    const block = (reason: string) => {
-      proposal = { kind: "block", reason, policy: p };
-    };
     switch (p.type) {
       case "rate_limit":
         if (countDecisions(agent.id, 60_000) >= Number(p.config.max_per_minute ?? 30))
-          block("rate_limit_exceeded");
+          proposal = { kind: "block", reason: "rate_limit_exceeded", policy: p };
         break;
       case "loop_detection": {
         const win = Number(p.config.window_minutes ?? 5) * 60_000;
         if (countLoops(agent.id, input.tool, argsHash, win) >= Number(p.config.max_repeats ?? 1))
-          block("runaway_loop_detected");
+          proposal = { kind: "block", reason: "runaway_loop_detected", policy: p };
         break;
       }
       case "tool_allowlist": {
         const list: string[] | undefined = p.config.tools;
         if (list && list.length > 0 && !list.includes(input.tool))
-          block("tool_not_allowed");
+          proposal = { kind: "block", reason: "tool_not_allowed", policy: p };
         break;
       }
       case "threshold": {
@@ -203,17 +196,19 @@ export function evaluate(input: EvalInput) {
         const thr = Number(p.config.threshold ?? 0);
         if (val > thr) {
           if (p.config.action === "deny")
-            block(p.config.reason ?? "hard_cap_exceeded");
+            proposal = { kind: "block", reason: p.config.reason ?? "hard_cap_exceeded", policy: p };
           else proposal = { kind: "require_human", reason: "human_approval_required", policy: p };
         }
         break;
       }
       case "max_call_cost":
-        if (est > Number(p.config.max_usd ?? Infinity)) block("max_call_cost_exceeded");
+        if (est > Number(p.config.max_usd ?? Infinity))
+          proposal = { kind: "block", reason: "max_call_cost_exceeded", policy: p };
         break;
       case "budget_daily": {
         const budget = Number(p.config.max_usd ?? agent.daily_budget_usd ?? 0);
-        if (spentToday(agent.id) + est > budget) block("daily_budget_exhausted");
+        if (spentToday(agent.id) + est > budget)
+          proposal = { kind: "block", reason: "daily_budget_exhausted", policy: p };
         break;
       }
     }
@@ -252,7 +247,7 @@ export function evaluate(input: EvalInput) {
     const decision_id = crypto.randomUUID();
     const approval_id = crypto.randomUUID();
     try {
-      appendEvent({
+      await appendEvent({
         type: "decision",
         decision_id,
         agent_id: agent.id,
@@ -293,7 +288,7 @@ export function evaluate(input: EvalInput) {
   return deny(proposal.reason, proposal.policy, { budget_remaining_usd: budgetRemaining });
 }
 
-export function recordOutcome(body: {
+export async function recordOutcome(body: {
   decision_id?: string;
   cost_usd?: number;
   tokens?: number;
@@ -304,7 +299,7 @@ export function recordOutcome(body: {
   const decision = ledgerEvents((e) => e.type === "decision" && e.decision_id === body.decision_id).pop();
   if (!decision) return { ok: false, error: "decision_not_found" };
   const status = body.status ?? "succeeded";
-  appendEvent({
+  await appendEvent({
     type: "outcome",
     decision_id: body.decision_id,
     agent_id: decision.agent_id,

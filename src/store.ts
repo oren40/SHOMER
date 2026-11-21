@@ -45,6 +45,7 @@ export interface Approval {
   requested_at: string;
   resolved_at?: string;
   resolved_by?: string;
+  resolved_by_key_id?: string;
 }
 
 /** Credential broker registry: the control plane holds the secret, the agent never does. */

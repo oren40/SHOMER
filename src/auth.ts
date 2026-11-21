@@ -31,6 +31,11 @@ export function createKey(name: string, scopes: string[]) {
   return { id: key.id, name, scopes, key: plaintext };
 }
 
+export function findKeyByPlaintext(plaintext: string | null) {
+  if (!plaintext) return null;
+  return db.apiKeys.find((x) => x.key_hash === hashKey(plaintext) && !x.revoked) ?? null;
+}
+
 export function listKeys() {
   return db.apiKeys.map((k) => ({
     id: k.id,

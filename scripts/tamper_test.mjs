@@ -20,7 +20,7 @@ if (!fs.existsSync(tsx)) {
 
 const child = spawn(process.execPath, [tsx, "src/index.ts"], {
   cwd: ROOT,
-  env: { ...process.env, PORT: String(PORT), SHOMER_DATA_DIR: TMP },
+  env: { ...process.env, PORT: String(PORT), SHOMER_DATA_DIR: TMP, SHOMER_CHECKPOINT_DIR: path.join(TMP, "checkpoints"), SHOMER_CHECKPOINT_KEY_PATH: path.join(TMP, "keys", "cp.pem") },
   stdio: ["ignore", "ignore", "pipe"],
 });
 let stderr = "";
