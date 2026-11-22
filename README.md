@@ -22,11 +22,11 @@ python demo/refunds_agent.py   # the demo reads the key automatically
 | Step | Decision |
 |---|---|
 | small refund $18 | `allow` |
-| args with an email | `sanitize` — PII redacted before the tool runs |
-| refund $320 | `require_human` — human approval, cryptographically bound to the args hash |
-| refund $5000 | `deny` — hard cap |
-| same call x4 | `runaway_loop_detected` — circuit breaker |
-| burst of notifications | `daily_budget_exhausted` — even cheap calls get blocked |
+| args with an email | `sanitize` - PII redacted before the tool runs |
+| refund $320 | `require_human` - human approval, cryptographically bound to the args hash |
+| refund $5000 | `deny` - hard cap |
+| same call x4 | `runaway_loop_detected` - circuit breaker |
+| burst of notifications | `daily_budget_exhausted` - even cheap calls get blocked |
 
 Observe mode: flip a policy or an agent to `observe` and it records the would-be decision without enforcing. Roll out as observe -> enforce.
 
